@@ -21,10 +21,9 @@ import android.database.sqlite.SQLiteOpenHelper;
 import android.provider.BlockedNumberContract.BlockedNumbers;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.internal.util.Preconditions;
 
 public class BlockedNumberDatabaseHelper {
-    private static final String TAG = BlockedNumberProvider.TAG;
-
     private static final int DATABASE_VERSION = 1;
 
     private static final String DATABASE_NAME = "blockednumbers.db";
@@ -72,6 +71,7 @@ public class BlockedNumberDatabaseHelper {
     }
 
     private BlockedNumberDatabaseHelper(Context context, boolean instanceIsForTesting) {
+        Preconditions.checkNotNull(context);
         mContext = context;
         mOpenHelper = new OpenHelper(mContext,
                 instanceIsForTesting ? null : DATABASE_NAME, null, DATABASE_VERSION);
@@ -79,8 +79,9 @@ public class BlockedNumberDatabaseHelper {
 
     public static synchronized BlockedNumberDatabaseHelper getInstance(Context context) {
         if (sInstance == null) {
-            sInstance = new BlockedNumberDatabaseHelper(context.getApplicationContext(),
-                    /* instanceIsForTesting =*/ false);
+            sInstance = new BlockedNumberDatabaseHelper(
+                    context,
+                    /* instanceIsForTesting = */ false);
         }
         return sInstance;
     }

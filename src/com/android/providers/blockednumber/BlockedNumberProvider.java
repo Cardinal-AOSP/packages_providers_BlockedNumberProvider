@@ -30,6 +30,7 @@ import android.telecom.TelecomManager;
 import android.text.TextUtils;
 import android.util.Log;
 import com.android.common.content.ProjectionMap;
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.providers.blockednumber.BlockedNumberDatabaseHelper.Tables;
 
 /**
@@ -64,13 +65,13 @@ public class BlockedNumberProvider extends ContentProvider {
     private static final String ID_SELECTION =
             BlockedNumberContract.BlockedNumbers.COLUMN_ID + "=?";
 
+    @VisibleForTesting
+    protected BlockedNumberDatabaseHelper mDbHelper;
+
     @Override
     public boolean onCreate() {
+        mDbHelper = BlockedNumberDatabaseHelper.getInstance(getContext());
         return true;
-    }
-
-    BlockedNumberDatabaseHelper getDbHelper() {
-        return BlockedNumberDatabaseHelper.getInstance(getContext());
     }
 
     /**
@@ -141,7 +142,7 @@ public class BlockedNumberProvider extends ContentProvider {
         cv.put(BlockedNumberContract.BlockedNumbers.COLUMN_E164_NUMBER, e164Number);
 
         // Then insert.
-        final long id = getDbHelper().getWritableDatabase().insertOrThrow(
+        final long id = mDbHelper.getWritableDatabase().insertOrThrow(
                 BlockedNumberDatabaseHelper.Tables.BLOCKED_NUMBERS, null, cv);
 
         return ContentUris.withAppendedId(BlockedNumberContract.BlockedNumbers.CONTENT_URI, id);
@@ -198,7 +199,7 @@ public class BlockedNumberProvider extends ContentProvider {
      * Implements the "blocked/" delete.
      */
     private int deleteBlockedNumber(String selection, String[] selectionArgs) {
-        final SQLiteDatabase db = getDbHelper().getWritableDatabase();
+        final SQLiteDatabase db = mDbHelper.getWritableDatabase();
 
         // When selection is specified, compile it within (...) to detect SQL injection.
         if (!TextUtils.isEmpty(selection)) {
@@ -207,7 +208,7 @@ public class BlockedNumberProvider extends ContentProvider {
                     /* cancellationSignal =*/ null);
         }
 
-        return getDbHelper().getWritableDatabase().delete(
+        return db.delete(
                 BlockedNumberDatabaseHelper.Tables.BLOCKED_NUMBERS,
                 selection, selectionArgs);
     }
@@ -260,7 +261,7 @@ public class BlockedNumberProvider extends ContentProvider {
         qb.setTables(BlockedNumberDatabaseHelper.Tables.BLOCKED_NUMBERS);
         qb.setProjectionMap(sBlockedNumberColumns);
 
-        return qb.query(getDbHelper().getReadableDatabase(), projection, selection, selectionArgs,
+        return qb.query(mDbHelper.getReadableDatabase(), projection, selection, selectionArgs,
                 /* groupBy =*/ null, /* having =*/null, sortOrder,
                 /* limit =*/ null, cancellationSignal);
     }
@@ -306,7 +307,7 @@ public class BlockedNumberProvider extends ContentProvider {
                     inStripped, inE164));
         }
 
-        final Cursor c = getDbHelper().getReadableDatabase().rawQuery(
+        final Cursor c = mDbHelper.getReadableDatabase().rawQuery(
                 "SELECT " +
                 BlockedNumberContract.BlockedNumbers.COLUMN_ORIGINAL_NUMBER + "," +
                 BlockedNumberContract.BlockedNumbers.COLUMN_STRIPPED_NUMBER + "," +

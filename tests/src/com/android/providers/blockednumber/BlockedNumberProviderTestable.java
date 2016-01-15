@@ -16,20 +16,10 @@
 package com.android.providers.blockednumber;
 
 public class BlockedNumberProviderTestable extends BlockedNumberProvider {
-    private BlockedNumberDatabaseHelper mDbHelper;
-
     @Override
     public boolean onCreate() {
-        super.onCreate();
-
         mDbHelper = BlockedNumberDatabaseHelper.newInstanceForTest(getContext());
-
         return true;
-    }
-
-    @Override
-    BlockedNumberDatabaseHelper getDbHelper() {
-        return mDbHelper;
     }
 
     @Override

@@ -23,7 +23,6 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteConstraintException;
 import android.database.sqlite.SQLiteException;
 import android.net.Uri;
-import android.os.Bundle;
 import android.provider.BlockedNumberContract;
 import android.provider.BlockedNumberContract.BlockedNumbers;
 import android.test.AndroidTestCase;
@@ -31,11 +30,10 @@ import android.test.MoreAsserts;
 import junit.framework.Assert;
 
 /**
- m BlockedNumberProviderTests &&
- adb install -r \
- ${ANDROID_PRODUCT_OUT}/data/app/BlockedNumberProviderTests/BlockedNumberProviderTests.apk &&
- adb shell am instrument -e class com.android.providers.blockednumber.BlockedNumberProviderTest \
- -w com.android.providers.blockednumber.tests/android.support.test.runner.AndroidJUnitRunner
+ * m BlockedNumberProviderTest && adb install -r
+ * ${ANDROID_PRODUCT_OUT}/data/app/BlockedNumberProviderTest/BlockedNumberProviderTest.apk && adb
+ * shell am instrument -e class com.android.providers.blockednumber.BlockedNumberProviderTest \ -w
+ * com.android.providers.blockednumber.tests/android.support.test.runner.AndroidJUnitRunner
  */
 public class BlockedNumberProviderTest extends AndroidTestCase {
     private Context mRealTestContext;
@@ -144,7 +142,7 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
     private void insertExpectingFailure(ContentValues cv) {
         try {
             mResolver.insert(
-                    BlockedNumbers.CONTENT_URI, cv());
+                    BlockedNumbers.CONTENT_URI, cv);
             fail();
         } catch (IllegalArgumentException expected) {
         }
@@ -206,8 +204,8 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
 
     public void testIsBlocked() {
         // Prepare test data
-        Uri u1 = insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
-        Uri u2 = insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "+1.2-3"));
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "+1.2-3"));
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "+1-500-454-1111"));
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1-500-454-2222"));
 
