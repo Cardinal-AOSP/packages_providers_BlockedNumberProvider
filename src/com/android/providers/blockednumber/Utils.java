@@ -48,23 +48,6 @@ public class Utils {
     }
 
     /**
-     * Strip formatting characters and the non-phone number portion from a phone number.  e.g.
-     * "+1-408-123-4444;123" to "+14081234444".
-     *
-     * <p>Special case: if a number contains '@', it's considered as an email address and returned
-     * unmodified.
-     */
-    public static @NonNull String stripPhoneNumber(@Nullable String phoneNumber) {
-        if (TextUtils.isEmpty(phoneNumber)) {
-            return "";
-        }
-        if (phoneNumber.contains("@")) {
-            return phoneNumber;
-        }
-        return PhoneNumberUtils.extractNetworkPortion(phoneNumber);
-    }
-
-    /**
      * Converts a phone number to an E164 number, assuming the current country.  If {@code
      * incomingE16Number} is provided, it'll just strip it and returns.  If the number is not valid,
      * it'll return "".
@@ -78,7 +61,7 @@ public class Utils {
             return rawNumber;
         }
         if (!TextUtils.isEmpty(incomingE16Number)) {
-            return stripPhoneNumber(incomingE16Number);
+            return incomingE16Number;
         }
         if (TextUtils.isEmpty(rawNumber)) {
             return "";

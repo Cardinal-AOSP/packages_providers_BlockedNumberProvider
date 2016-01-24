@@ -24,7 +24,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.Preconditions;
 
 public class BlockedNumberDatabaseHelper {
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2;
 
     private static final String DATABASE_NAME = "blockednumbers.db";
 
@@ -46,22 +46,29 @@ public class BlockedNumberDatabaseHelper {
 
         @Override
         public void onCreate(SQLiteDatabase db) {
-            db.execSQL("CREATE TABLE " + Tables.BLOCKED_NUMBERS + " (" +
-                    BlockedNumbers.COLUMN_ID + " INTEGER PRIMARY KEY AUTOINCREMENT," +
-                    BlockedNumbers.COLUMN_ORIGINAL_NUMBER + " TEXT NOT NULL UNIQUE," +
-                    BlockedNumbers.COLUMN_STRIPPED_NUMBER + " TEXT NOT NULL," +
-                    BlockedNumbers.COLUMN_E164_NUMBER + " TEXT" +
-                    ")");
-
-            db.execSQL("CREATE INDEX blocked_number_idx_stripped ON " + Tables.BLOCKED_NUMBERS +
-                    " (" + BlockedNumbers.COLUMN_STRIPPED_NUMBER + ");");
-            db.execSQL("CREATE INDEX blocked_number_idx_e164 ON " + Tables.BLOCKED_NUMBERS + " (" +
-                    BlockedNumbers.COLUMN_E164_NUMBER +
-                    ");");
+            createTables(db);
         }
 
         @Override
         public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+            if (oldVersion < 2) {
+                db.execSQL("DROP TABLE IF EXISTS blocked");
+                createTables(db);
+            }
+        }
+
+        private void createTables(SQLiteDatabase db) {
+            db.execSQL("CREATE TABLE " + Tables.BLOCKED_NUMBERS + " (" +
+                    BlockedNumbers.COLUMN_ID + " INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    BlockedNumbers.COLUMN_ORIGINAL_NUMBER + " TEXT NOT NULL UNIQUE," +
+                    BlockedNumbers.COLUMN_E164_NUMBER + " TEXT" +
+                    ")");
+
+            db.execSQL("CREATE INDEX blocked_number_idx_original ON " + Tables.BLOCKED_NUMBERS +
+                    " (" + BlockedNumbers.COLUMN_ORIGINAL_NUMBER + ");");
+            db.execSQL("CREATE INDEX blocked_number_idx_e164 ON " + Tables.BLOCKED_NUMBERS + " (" +
+                    BlockedNumbers.COLUMN_E164_NUMBER +
+                    ");");
         }
     }
 

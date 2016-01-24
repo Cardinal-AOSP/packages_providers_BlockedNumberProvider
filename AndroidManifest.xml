@@ -18,17 +18,12 @@
         package="com.android.providers.blockednumber"
         android:sharedUserId="android.uid.shared">
 
-<!--
-    TODO: Make it DE. Add the following to <application>.  See go/android-fbe-apis
-        android:encryptionAware=”true”
-        android:forceDeviceEncrypted=”true”
--->
-
     <application
         android:process="android.process.acore"
         android:label="@string/app_label"
-        android:allowBackup="false"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="false"
+        android:encryptionAware="true"
+        android:forceDeviceEncrypted="true">
 
         <provider android:name="BlockedNumberProvider"
             android:authorities="com.android.blockednumber"

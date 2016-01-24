@@ -19,6 +19,7 @@ import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
+import android.database.ContentObserver;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteConstraintException;
 import android.database.sqlite.SQLiteException;
@@ -28,6 +29,9 @@ import android.provider.BlockedNumberContract.BlockedNumbers;
 import android.test.AndroidTestCase;
 import android.test.MoreAsserts;
 import junit.framework.Assert;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * m BlockedNumberProviderTest && adb install -r
@@ -40,7 +44,9 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
     private MyMockContext mMockContext;
     private ContentResolver mResolver;
 
-    /** Whether the country detector thinks the device is in USA. */
+    /**
+     * Whether the country detector thinks the device is in USA.
+     */
     private boolean mInUSA;
 
     @Override
@@ -66,7 +72,7 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         final ContentValues ret = new ContentValues();
         for (int i = 1; i < namesAndValues.length; i += 2) {
             final String name = namesAndValues[i - 1].toString();
-            final Object value =  namesAndValues[i];
+            final Object value = namesAndValues[i];
             if (value == null) {
                 ret.putNull(name);
             } else if (value instanceof String) {
@@ -104,7 +110,6 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         insertExpectingFailure(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, null));
         insertExpectingFailure(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, ""));
         insertExpectingFailure(cv(BlockedNumbers.COLUMN_ID, 1));
-        insertExpectingFailure(cv(BlockedNumbers.COLUMN_STRIPPED_NUMBER, 1));
         insertExpectingFailure(cv(BlockedNumbers.COLUMN_E164_NUMBER, "1"));
 
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
@@ -126,6 +131,30 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         assertRowCount(6, BlockedNumbers.CONTENT_URI);
 
         // TODO Check the table content.
+    }
+
+    public void testChangesNotified() throws Exception {
+        Cursor c = mResolver.query(BlockedNumbers.CONTENT_URI, null, null, null, null);
+
+        final CountDownLatch latch = new CountDownLatch(2);
+        ContentObserver contentObserver = new ContentObserver(null) {
+            @Override
+            public void onChange(boolean selfChange) {
+                Assert.assertFalse(selfChange);
+                latch.notify();
+            }
+        };
+        c.registerContentObserver(contentObserver);
+
+        try {
+            Uri uri = insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "14506507000"));
+            mResolver.delete(uri, null, null);
+            latch.await(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            fail(e.toString());
+        } finally {
+            c.unregisterContentObserver(contentObserver);
+        }
     }
 
     private Uri insert(ContentValues cv) {
@@ -210,16 +239,19 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1-500-454-2222"));
 
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "045-111-2222",
-                BlockedNumbers.COLUMN_E164_NUMBER, "+81-45-111-2222"));
+                BlockedNumbers.COLUMN_E164_NUMBER, "+81451112222"));
 
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "abc.def@gmail.com"));
 
         // Check
+        assertIsBlocked(false, "");
+        assertIsBlocked(false, null);
         assertIsBlocked(true, "123");
         assertIsBlocked(false, "1234");
         assertIsBlocked(true, "+81451112222");
         assertIsBlocked(true, "+81 45 111 2222");
-        assertIsBlocked(true, "045 111 2222");
+        assertIsBlocked(true, "045-111-2222");
+        assertIsBlocked(false, "045 111 2222");
 
         if (mInUSA) {
             // Probably won't work outside of the +1 region.
