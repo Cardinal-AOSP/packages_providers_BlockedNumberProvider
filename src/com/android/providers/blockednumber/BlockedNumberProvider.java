@@ -18,19 +18,27 @@ package com.android.providers.blockednumber;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.AppOpsManager;
-import android.content.*;
+import android.content.ContentProvider;
+import android.content.ContentUris;
+import android.content.ContentValues;
+import android.content.UriMatcher;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteQueryBuilder;
 import android.net.Uri;
-import android.os.*;
+import android.os.Binder;
+import android.os.Bundle;
+import android.os.CancellationSignal;
 import android.os.Process;
+import android.os.UserHandle;
+import android.os.UserManager;
 import android.provider.BlockedNumberContract;
 import android.telecom.TelecomManager;
 import android.text.TextUtils;
 import android.util.Log;
+
 import com.android.common.content.ProjectionMap;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.providers.blockednumber.BlockedNumberDatabaseHelper.Tables;
@@ -75,12 +83,6 @@ public class BlockedNumberProvider extends ContentProvider {
         return true;
     }
 
-    /**
-     * TODO CTS:
-     * - BLOCKED_LIST
-     * - BLOCKED_ID
-     * - Other random URLs should fail
-     */
     @Override
     public String getType(@NonNull Uri uri) {
         final int match = sUriMatcher.match(uri);
@@ -94,18 +96,6 @@ public class BlockedNumberProvider extends ContentProvider {
         }
     }
 
-    /**
-     * TODO CTS:
-     * - BLOCKED_LIST
-     *   With no columns should fail
-     *   With COLUMN_INDEX_ORIGINAL only
-     *   With COLUMN_INDEX_E164 only should fail
-     *   With COLUMN_INDEX_ORIGINAL + COLUMN_INDEX_E164
-     *   With with throwIfSpecified columns, should fail.
-     *
-     * - BLOCKED_ID should fail
-     * - Other random URLs should fail
-     */
     @Override
     public Uri insert(@NonNull Uri uri, @Nullable ContentValues values) {
         enforceWritePermission();
@@ -157,10 +147,6 @@ public class BlockedNumberProvider extends ContentProvider {
         }
     }
 
-    /**
-     * TODO CTS:
-     * - Any call should fail
-     */
     @Override
     public int update(@NonNull Uri uri, @Nullable ContentValues values, @Nullable String selection,
             @Nullable String[] selectionArgs) {
@@ -168,11 +154,6 @@ public class BlockedNumberProvider extends ContentProvider {
                 "Update is not supported.  Use delete + insert instead");
     }
 
-    /**
-     * TODO CTS:
-     * - BLOCKED_LIST, with selection and without.
-     * - BLOCKED_ID , with selection and without.  With should fail.
-     */
     @Override
     public int delete(@NonNull Uri uri, @Nullable String selection,
             @Nullable String[] selectionArgs) {
@@ -287,12 +268,6 @@ public class BlockedNumberProvider extends ContentProvider {
         }
     }
 
-    /**
-     * TODO CTS:
-     * - METHOD_IS_BLOCKED with various matching / non-matching arguments.
-     *
-     * - other random methods should fail
-     */
     @Override
     public Bundle call(@NonNull String method, @Nullable String arg, @Nullable Bundle extras) {
         enforceReadPermission();
@@ -301,6 +276,10 @@ public class BlockedNumberProvider extends ContentProvider {
         switch (method) {
             case BlockedNumberContract.METHOD_IS_BLOCKED:
                 res.putBoolean(BlockedNumberContract.RES_NUMBER_IS_BLOCKED, isBlocked(arg));
+                break;
+            case BlockedNumberContract.METHOD_CAN_CURRENT_USER_BLOCK_NUMBERS:
+                res.putBoolean(
+                        BlockedNumberContract.RES_CAN_BLOCK_NUMBERS, canCurrentUserBlockUsers());
                 break;
             default:
                 throw new IllegalArgumentException("Unsupported method " + method);
@@ -346,19 +325,20 @@ public class BlockedNumberProvider extends ContentProvider {
         return false;
     }
 
+    private boolean canCurrentUserBlockUsers() {
+        UserManager userManager = getContext().getSystemService(UserManager.class);
+        return userManager.isPrimaryUser();
+    }
+
     /**
      * Throws {@link SecurityException} when the caller is not root, system, the system dialer,
      * the user selected dialer, or the default SMS app.
-     *
-     * NOT TESTED YET
-     *
-     * TODO CTS:
-     * - Call should fail for random 3p apps.
-     *
-     * TODO Add a permission to allow the contacts app to access?
-     * TODO Add a permission to allow carrier apps?
      */
-    public void enforceReadPermission() {
+    private void enforceReadPermission() {
+        if (!canCurrentUserBlockUsers()) {
+            throw new UnsupportedOperationException();
+        }
+
         final int callingUid = Binder.getCallingUid();
 
         // System and root can always call it. (and myself)
@@ -402,10 +382,6 @@ public class BlockedNumberProvider extends ContentProvider {
         throw new SecurityException("Caller must be system, default dialer or default SMS app");
     }
 
-    /**
-     * TODO CTS:
-     * - Call should fail for random 3p apps.
-     */
     public void enforceWritePermission() {
         // Same check as read.
         enforceReadPermission();
