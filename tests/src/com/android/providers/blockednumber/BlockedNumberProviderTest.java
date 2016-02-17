@@ -15,48 +15,52 @@
  */
 package com.android.providers.blockednumber;
 
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.when;
+
+import android.app.AppOpsManager;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
-import android.content.Context;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteConstraintException;
 import android.database.sqlite.SQLiteException;
+import android.location.Country;
 import android.net.Uri;
 import android.provider.BlockedNumberContract;
 import android.provider.BlockedNumberContract.BlockedNumbers;
 import android.test.AndroidTestCase;
 import android.test.MoreAsserts;
+
 import junit.framework.Assert;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * m BlockedNumberProviderTest && adb install -r
- * ${ANDROID_PRODUCT_OUT}/data/app/BlockedNumberProviderTest/BlockedNumberProviderTest.apk && adb
- * shell am instrument -e class com.android.providers.blockednumber.BlockedNumberProviderTest \ -w
- * com.android.providers.blockednumber.tests/android.support.test.runner.AndroidJUnitRunner
+ * m BlockedNumberProviderTest && runtest --path packages/providers/BlockedNumberProvider/tests
  */
 public class BlockedNumberProviderTest extends AndroidTestCase {
-    private Context mRealTestContext;
     private MyMockContext mMockContext;
     private ContentResolver mResolver;
-
-    /**
-     * Whether the country detector thinks the device is in USA.
-     */
-    private boolean mInUSA;
 
     @Override
     protected void setUp() throws Exception {
         super.setUp();
 
-        mRealTestContext = getContext();
-        mMockContext = new MyMockContext(mRealTestContext);
+        mMockContext = new MyMockContext();
+        mMockContext.init();
         mResolver = mMockContext.getContentResolver();
-        mInUSA = "US".equals(Utils.getCurrentCountryIso(mRealTestContext));
+
+        when(mMockContext.mUserManager.isPrimaryUser()).thenReturn(true);
+        when(mMockContext.mCountryDetector.detectCountry())
+                .thenReturn(new Country("US", Country.COUNTRY_SOURCE_LOCATION));
+        when(mMockContext.mAppOpsManager.noteOp(
+                eq(AppOpsManager.OP_WRITE_SMS), anyInt(), anyString()))
+                .thenReturn(AppOpsManager.MODE_ERRORED);
     }
 
     @Override
@@ -253,11 +257,8 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         assertIsBlocked(true, "045-111-2222");
         assertIsBlocked(false, "045 111 2222");
 
-        if (mInUSA) {
-            // Probably won't work outside of the +1 region.
-            assertIsBlocked(true, "500-454 1111");
-            assertIsBlocked(true, "500-454 2222");
-        }
+        assertIsBlocked(true, "500-454 1111");
+        assertIsBlocked(true, "500-454 2222");
         assertIsBlocked(true, "+1 500-454 1111");
         assertIsBlocked(true, "1 500-454 1111");
 

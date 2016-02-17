@@ -22,7 +22,6 @@ import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.UriMatcher;
-import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
@@ -32,10 +31,10 @@ import android.os.Binder;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.os.Process;
-import android.os.UserHandle;
 import android.os.UserManager;
 import android.provider.BlockedNumberContract;
 import android.telecom.TelecomManager;
+import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -150,6 +149,8 @@ public class BlockedNumberProvider extends ContentProvider {
     @Override
     public int update(@NonNull Uri uri, @Nullable ContentValues values, @Nullable String selection,
             @Nullable String[] selectionArgs) {
+        enforceWritePermission();
+
         throw new UnsupportedOperationException(
                 "Update is not supported.  Use delete + insert instead");
     }
@@ -331,59 +332,56 @@ public class BlockedNumberProvider extends ContentProvider {
     }
 
     /**
-     * Throws {@link SecurityException} when the caller is not root, system, the system dialer,
-     * the user selected dialer, or the default SMS app.
+     * Returns {@code false} when the caller is not root, the user selected dialer, the
+     * default SMS app or a carrier app.
      */
-    private void enforceReadPermission() {
+    private boolean checkForPrivilegedApplications() {
         if (!canCurrentUserBlockUsers()) {
             throw new UnsupportedOperationException();
         }
 
-        final int callingUid = Binder.getCallingUid();
-
-        // System and root can always call it. (and myself)
-        if (UserHandle.isSameApp(callingUid, android.os.Process.SYSTEM_UID)
-                || (callingUid == Process.ROOT_UID)
-                || (callingUid == Process.myUid())) {
-            return;
+        if (Binder.getCallingUid() == Process.ROOT_UID) {
+            return true;
         }
 
         final String callingPackage = getCallingPackage();
         if (TextUtils.isEmpty(callingPackage)) {
             Log.w(TAG, "callingPackage not accessible");
         } else {
-
             final TelecomManager telecom = getContext().getSystemService(TelecomManager.class);
 
             if (callingPackage.equals(telecom.getDefaultDialerPackage())
-                || callingPackage.equals(telecom.getSystemDialerPackage())) {
-                return;
+                    || callingPackage.equals(telecom.getSystemDialerPackage())) {
+                return true;
             }
-
-            // Allow the default SMS app and the dialer app to access it.
             final AppOpsManager appOps = getContext().getSystemService(AppOpsManager.class);
-
             if (appOps.noteOp(AppOpsManager.OP_WRITE_SMS,
                     Binder.getCallingUid(), callingPackage) == AppOpsManager.MODE_ALLOWED) {
-                return;
+                return true;
             }
 
-            // TODO: Add an explicit permission instead.
-            try {
-                ApplicationInfo applicationInfo = getContext().
-                        getPackageManager().getPackageInfo(callingPackage, 0).applicationInfo;
-                if (applicationInfo.isPrivilegedApp() || applicationInfo.isSystemApp()) {
-                    return;
-                }
-            } catch (PackageManager.NameNotFoundException e) {
-                Log.w(TAG, "package not found: " + e);
-            }
+            final TelephonyManager telephonyManager =
+                    getContext().getSystemService(TelephonyManager.class);
+            return telephonyManager.checkCarrierPrivilegesForPackage(callingPackage) ==
+                    TelephonyManager.CARRIER_PRIVILEGE_STATUS_HAS_ACCESS;
         }
-        throw new SecurityException("Caller must be system, default dialer or default SMS app");
+        return false;
     }
 
-    public void enforceWritePermission() {
-        // Same check as read.
-        enforceReadPermission();
+    private void enforceReadPermission() {
+        checkForPermission(android.Manifest.permission.READ_BLOCKED_NUMBERS);
+    }
+
+    private void enforceWritePermission() {
+        checkForPermission(android.Manifest.permission.WRITE_BLOCKED_NUMBERS);
+    }
+
+    private void checkForPermission(String permission) {
+        boolean permitted = getContext().checkCallingPermission(permission)
+                == PackageManager.PERMISSION_GRANTED
+                || checkForPrivilegedApplications();
+        if (!permitted) {
+            throw new SecurityException("Caller must be system, default dialer or default SMS app");
+        }
     }
 }

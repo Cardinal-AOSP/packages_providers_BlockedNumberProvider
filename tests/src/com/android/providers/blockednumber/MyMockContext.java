@@ -15,57 +15,103 @@
  */
 package com.android.providers.blockednumber;
 
+import android.app.AppOpsManager;
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.location.CountryDetector;
+import android.os.UserManager;
 import android.provider.BlockedNumberContract;
+import android.telecom.TelecomManager;
+import android.telephony.TelephonyManager;
 import android.test.mock.MockContentResolver;
 import android.test.mock.MockContext;
+
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.util.HashMap;
+
 public class MyMockContext extends MockContext {
-    public final Context realTestContext;
-
     @Mock
-    CountryDetector countryDetector;
+    CountryDetector mCountryDetector;
+    @Mock
+    AppOpsManager mAppOpsManager;
+    @Mock
+    UserManager mUserManager;
+    @Mock
+    TelecomManager mTelecomManager;
+    @Mock
+    TelephonyManager mTelephonyManager;
 
-    MockContentResolver resolver;
+    private final HashMap<Class<?>, String> mSupportedServiceNamesByClass =
+            new HashMap<Class<?>, String>();
+    private MockContentResolver mResolver;
+    private BlockedNumberProviderTestable mProvider;
 
-    BlockedNumberProviderTestable provider;
-
-    public MyMockContext(Context realTestContext) {
-        this.realTestContext = realTestContext;
-        MockitoAnnotations.initMocks(this);
-
-        resolver = new MockContentResolver();
-
-        provider = new BlockedNumberProviderTestable();
-
-        final ProviderInfo info = new ProviderInfo();
-        info.authority = BlockedNumberContract.AUTHORITY;
-        provider.attachInfoForTesting(realTestContext, info);
-
-        resolver.addProvider(BlockedNumberContract.AUTHORITY, provider);
+    @Override
+    public String getSystemServiceName(Class<?> serviceClass) {
+        if (mSupportedServiceNamesByClass.containsKey(serviceClass)) {
+            return mSupportedServiceNamesByClass.get(serviceClass);
+        }
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public Object getSystemService(String name) {
         switch (name) {
             case Context.COUNTRY_DETECTOR:
-                return countryDetector;
+                return mCountryDetector;
+            case Context.APP_OPS_SERVICE:
+                return mAppOpsManager;
+            case Context.USER_SERVICE:
+                return mUserManager;
+            case Context.TELECOM_SERVICE:
+                return mTelecomManager;
+            case Context.TELEPHONY_SERVICE:
+                return mTelephonyManager;
         }
-        throw new UnsupportedOperationException();
+        throw new UnsupportedOperationException("Service not supported: " + name);
     }
 
     @Override
     public ContentResolver getContentResolver() {
-        return resolver;
+        return mResolver;
+    }
+
+    @Override
+    public int checkCallingPermission(String permission) {
+        return permission != null && (permission.equals("android.permission.READ_BLOCKED_NUMBERS")
+                || permission.equals("android.permission.WRITE_BLOCKED_NUMBERS"))
+                ? PackageManager.PERMISSION_GRANTED : PackageManager.PERMISSION_DENIED;
+    }
+
+    public void init() {
+        registerServices();
+        mResolver = new MockContentResolver();
+
+        mProvider = new BlockedNumberProviderTestable();
+
+        final ProviderInfo info = new ProviderInfo();
+        info.authority = BlockedNumberContract.AUTHORITY;
+        mProvider.attachInfoForTesting(this, info);
+
+        mResolver.addProvider(BlockedNumberContract.AUTHORITY, mProvider);
+    }
+
+    private void registerServices() {
+        MockitoAnnotations.initMocks(this);
+
+        mSupportedServiceNamesByClass.put(CountryDetector.class, Context.COUNTRY_DETECTOR);
+        mSupportedServiceNamesByClass.put(AppOpsManager.class, Context.APP_OPS_SERVICE);
+        mSupportedServiceNamesByClass.put(UserManager.class, Context.USER_SERVICE);
+        mSupportedServiceNamesByClass.put(TelecomManager.class, Context.TELECOM_SERVICE);
+        mSupportedServiceNamesByClass.put(TelephonyManager.class, Context.TELEPHONY_SERVICE);
     }
 
     public void shutdown() {
-        provider.shutdown();
+        mProvider.shutdown();
     }
 }
 
