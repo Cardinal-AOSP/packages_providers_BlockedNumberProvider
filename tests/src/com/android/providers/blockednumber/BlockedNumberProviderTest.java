@@ -18,20 +18,30 @@ package com.android.providers.blockednumber;
 import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import android.app.AppOpsManager;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
+import android.content.pm.PackageManager;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteConstraintException;
 import android.database.sqlite.SQLiteException;
 import android.location.Country;
 import android.net.Uri;
+import android.os.PersistableBundle;
 import android.provider.BlockedNumberContract;
 import android.provider.BlockedNumberContract.BlockedNumbers;
+import android.provider.BlockedNumberContract.SystemContract;
+import android.telephony.CarrierConfigManager;
+import android.telephony.TelephonyManager;
 import android.test.AndroidTestCase;
 import android.test.MoreAsserts;
 
@@ -41,7 +51,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * m BlockedNumberProviderTest && runtest --path packages/providers/BlockedNumberProvider/tests
+ * runtest --path packages/providers/BlockedNumberProvider/tests
  */
 public class BlockedNumberProviderTest extends AndroidTestCase {
     private MyMockContext mMockContext;
@@ -51,8 +61,8 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
     protected void setUp() throws Exception {
         super.setUp();
 
-        mMockContext = new MyMockContext();
-        mMockContext.init();
+        mMockContext = spy(new MyMockContext(getContext()));
+        mMockContext.initializeContext();
         mResolver = mMockContext.getContentResolver();
 
         when(mMockContext.mUserManager.isPrimaryUser()).thenReturn(true);
@@ -235,6 +245,196 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         }
     }
 
+    public void testBlockSuppressionAfterEmergencyContact() {
+        int blockSuppressionSeconds = 1000;
+        when(mMockContext.mCarrierConfigManager.getConfig())
+                .thenReturn(getBundleWithInt(blockSuppressionSeconds));
+
+        String phoneNumber = "5004541111";
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, phoneNumber));
+
+        // No emergency contact: Blocks should not be suppressed.
+        assertIsBlocked(true, phoneNumber);
+        assertShouldSystemBlock(true, phoneNumber);
+        verifyBlocksNotSuppressed();
+        assertTrue(mMockContext.mIntentsBroadcasted.isEmpty());
+
+        // No emergency contact yet: Ending block suppression should be a no-op.
+        SystemContract.endBlockSuppression(mMockContext);
+        assertIsBlocked(true, phoneNumber);
+        assertShouldSystemBlock(true, phoneNumber);
+        verifyBlocksNotSuppressed();
+        assertTrue(mMockContext.mIntentsBroadcasted.isEmpty());
+
+        // After emergency contact blocks should be suppressed.
+        long timestampMillisBeforeEmergencyContact = System.currentTimeMillis();
+        SystemContract.notifyEmergencyContact(mMockContext);
+        assertIsBlocked(true, phoneNumber);
+        assertShouldSystemBlock(false, phoneNumber);
+        SystemContract.BlockSuppressionStatus status =
+                SystemContract.getBlockSuppressionStatus(mMockContext);
+        assertTrue(status.isSuppressed);
+        assertValidBlockSuppressionExpiration(timestampMillisBeforeEmergencyContact,
+                blockSuppressionSeconds, status.untilTimestampMillis);
+        assertEquals(1, mMockContext.mIntentsBroadcasted.size());
+        assertEquals(SystemContract.ACTION_BLOCK_SUPPRESSION_STATE_CHANGED,
+                mMockContext.mIntentsBroadcasted.get(0));
+        mMockContext.mIntentsBroadcasted.clear();
+
+        // Ending block suppression should work.
+        SystemContract.endBlockSuppression(mMockContext);
+        assertIsBlocked(true, phoneNumber);
+        assertShouldSystemBlock(true, phoneNumber);
+        verifyBlocksNotSuppressed();
+        assertEquals(1, mMockContext.mIntentsBroadcasted.size());
+        assertEquals(SystemContract.ACTION_BLOCK_SUPPRESSION_STATE_CHANGED,
+                mMockContext.mIntentsBroadcasted.get(0));
+    }
+
+    public void testBlockSuppressionAfterEmergencyContact_invalidCarrierConfigDefaultValueUsed() {
+        int invalidBlockSuppressionSeconds = 700000; // > 1 week
+        when(mMockContext.mCarrierConfigManager.getConfig())
+                .thenReturn(getBundleWithInt(invalidBlockSuppressionSeconds));
+
+        String phoneNumber = "5004541111";
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, phoneNumber));
+
+        long timestampMillisBeforeEmergencyContact = System.currentTimeMillis();
+        SystemContract.notifyEmergencyContact(mMockContext);
+        assertIsBlocked(true, phoneNumber);
+        assertShouldSystemBlock(false, phoneNumber);
+        SystemContract.BlockSuppressionStatus status =
+                SystemContract.getBlockSuppressionStatus(mMockContext);
+        assertTrue(status.isSuppressed);
+        assertValidBlockSuppressionExpiration(timestampMillisBeforeEmergencyContact,
+                7200 /* Default value of 2 hours */, status.untilTimestampMillis);
+        assertEquals(1, mMockContext.mIntentsBroadcasted.size());
+        assertEquals(SystemContract.ACTION_BLOCK_SUPPRESSION_STATE_CHANGED,
+                mMockContext.mIntentsBroadcasted.get(0));
+    }
+
+    public void testRegularAppCannotAccessApis() {
+        doReturn(PackageManager.PERMISSION_DENIED)
+                .when(mMockContext).checkCallingPermission(anyString());
+
+        try {
+            insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            mResolver.query(BlockedNumbers.CONTENT_URI, null, null, null, null);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            mResolver.delete(BlockedNumbers.CONTENT_URI, null, null);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            BlockedNumberContract.isBlocked(mMockContext, "123");
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            SystemContract.notifyEmergencyContact(mMockContext);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            SystemContract.endBlockSuppression(mMockContext);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            SystemContract.shouldSystemBlockNumber(mMockContext, "123");
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            SystemContract.getBlockSuppressionStatus(mMockContext);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+    }
+
+    public void testCarrierAppCanAccessApis() {
+        doReturn(PackageManager.PERMISSION_DENIED)
+                .when(mMockContext).checkCallingPermission(anyString());
+        when(mMockContext.mTelephonyManager.checkCarrierPrivilegesForPackage(anyString()))
+                .thenReturn(TelephonyManager.CARRIER_PRIVILEGE_STATUS_HAS_ACCESS);
+
+        mResolver.insert(
+                BlockedNumbers.CONTENT_URI, cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
+        assertIsBlocked(true, "123");
+
+
+        // Dialer check is executed twice: once for insert, and once for isBlocked.
+        verify(mMockContext.mTelephonyManager, times(2))
+                .checkCarrierPrivilegesForPackage(anyString());
+    }
+
+    public void testDefaultDialerCanAccessApis() {
+        doReturn(PackageManager.PERMISSION_DENIED)
+                .when(mMockContext).checkCallingPermission(anyString());
+        when(mMockContext.mTelecomManager.getDefaultDialerPackage())
+                .thenReturn(getContext().getPackageName());
+
+        mResolver.insert(
+                BlockedNumbers.CONTENT_URI, cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
+        assertIsBlocked(true, "123");
+
+        // Dialer check is executed twice: once for insert, and once for isBlocked.
+        verify(mMockContext.mTelecomManager, times(2)).getDefaultDialerPackage();
+    }
+
+    public void testPrivilegedAppCannotUseSystemApis() {
+        reset(mMockContext.mAppOpsManager);
+        doReturn(PackageManager.PERMISSION_DENIED)
+                .when(mMockContext).checkCallingPermission(anyString());
+
+        // Pretend to be the Default SMS app.
+        when(mMockContext.mAppOpsManager.noteOp(
+                eq(AppOpsManager.OP_WRITE_SMS), anyInt(), anyString()))
+                .thenReturn(AppOpsManager.MODE_ALLOWED);
+
+        // Public APIs should work.
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
+        assertIsBlocked(true, "123");
+
+        try {
+            SystemContract.notifyEmergencyContact(mMockContext);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            SystemContract.endBlockSuppression(mMockContext);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            SystemContract.shouldSystemBlockNumber(mMockContext, "123");
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            SystemContract.getBlockSuppressionStatus(mMockContext);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+    }
+
     public void testIsBlocked() {
         // Prepare test data
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
@@ -270,5 +470,32 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
 
     private void assertIsBlocked(boolean expected, String phoneNumber) {
         assertEquals(expected, BlockedNumberContract.isBlocked(mMockContext, phoneNumber));
+    }
+
+    private void assertShouldSystemBlock(boolean expected, String phoneNumber) {
+        assertEquals(expected, SystemContract.shouldSystemBlockNumber(mMockContext, phoneNumber));
+    }
+
+    private PersistableBundle getBundleWithInt(int value) {
+        PersistableBundle bundle = new PersistableBundle();
+        bundle.putInt(
+                CarrierConfigManager.KEY_DURATION_BLOCKING_DISABLED_AFTER_EMERGENCY_INT, value);
+        return bundle;
+    }
+
+    private void verifyBlocksNotSuppressed() {
+        SystemContract.BlockSuppressionStatus status =
+                SystemContract.getBlockSuppressionStatus(mMockContext);
+        assertFalse(status.isSuppressed);
+        assertEquals(0, status.untilTimestampMillis);
+    }
+
+    private void assertValidBlockSuppressionExpiration(long timestampMillisBeforeEmergencyContact,
+                                                       int blockSuppressionSeconds,
+                                                       long actualExpirationMillis) {
+        assertTrue(actualExpirationMillis
+                >= timestampMillisBeforeEmergencyContact + blockSuppressionSeconds * 1000);
+        assertTrue(actualExpirationMillis < timestampMillisBeforeEmergencyContact +
+                2 * blockSuppressionSeconds * 1000);
     }
 }

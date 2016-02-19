@@ -15,12 +15,16 @@
  */
 package com.android.providers.blockednumber;
 
+import android.Manifest;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.AppOpsManager;
 import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.UriMatcher;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -33,7 +37,9 @@ import android.os.CancellationSignal;
 import android.os.Process;
 import android.os.UserManager;
 import android.provider.BlockedNumberContract;
+import android.provider.BlockedNumberContract.SystemContract;
 import android.telecom.TelecomManager;
+import android.telephony.CarrierConfigManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
@@ -57,6 +63,11 @@ public class BlockedNumberProvider extends ContentProvider {
     private static final int BLOCKED_ID = 1001;
 
     private static final UriMatcher sUriMatcher;
+
+    private static final String PREF_FILE = "block_number_provider_prefs";
+    private static final String BLOCK_SUPPRESSION_EXPIRY_TIME_PREF =
+            "block_suppression_expiry_time_pref";
+    private static final int MAX_BLOCKING_DISABLED_DURATION_SECONDS = 7 * 24 * 3600; // 1 week
 
     static {
         sUriMatcher = new UriMatcher(0);
@@ -271,18 +282,45 @@ public class BlockedNumberProvider extends ContentProvider {
 
     @Override
     public Bundle call(@NonNull String method, @Nullable String arg, @Nullable Bundle extras) {
-        enforceReadPermission();
-
         final Bundle res = new Bundle();
         switch (method) {
             case BlockedNumberContract.METHOD_IS_BLOCKED:
+                enforceReadPermission();
+
                 res.putBoolean(BlockedNumberContract.RES_NUMBER_IS_BLOCKED, isBlocked(arg));
                 break;
             case BlockedNumberContract.METHOD_CAN_CURRENT_USER_BLOCK_NUMBERS:
+                enforceReadPermission();
+
                 res.putBoolean(
                         BlockedNumberContract.RES_CAN_BLOCK_NUMBERS, canCurrentUserBlockUsers());
                 break;
+            case SystemContract.METHOD_NOTIFY_EMERGENCY_CONTACT:
+                enforceSystemWritePermission();
+
+                notifyEmergencyContact();
+                break;
+            case SystemContract.METHOD_END_BLOCK_SUPPRESSION:
+                enforceSystemWritePermission();
+
+                endBlockSuppression();
+                break;
+            case SystemContract.METHOD_GET_BLOCK_SUPPRESSION_STATUS:
+                enforceSystemReadPermission();
+
+                SystemContract.BlockSuppressionStatus status = getBlockSuppressionStatus();
+                res.putBoolean(SystemContract.RES_IS_BLOCKING_SUPPRESSED, status.isSuppressed);
+                res.putLong(SystemContract.RES_BLOCKING_SUPPRESSED_UNTIL_TIMESTAMP,
+                        status.untilTimestampMillis);
+                break;
+            case SystemContract.METHOD_SHOULD_SYSTEM_BLOCK_NUMBER:
+                enforceSystemReadPermission();
+                res.putBoolean(
+                        BlockedNumberContract.RES_NUMBER_IS_BLOCKED, shouldSystemBlockNumber(arg));
+                break;
             default:
+                enforceReadPermission();
+
                 throw new IllegalArgumentException("Unsupported method " + method);
         }
         return res;
@@ -331,15 +369,57 @@ public class BlockedNumberProvider extends ContentProvider {
         return userManager.isPrimaryUser();
     }
 
+    private void notifyEmergencyContact() {
+        writeBlockSuppressionExpiryTimePref(System.currentTimeMillis() +
+                getBlockSuppressSecondsFromCarrierConfig() * 1000);
+        notifyBlockSuppressionStateChange();
+    }
+
+    private void endBlockSuppression() {
+        // Nothing to do if blocks are not being suppressed.
+        if (getBlockSuppressionStatus().isSuppressed) {
+            writeBlockSuppressionExpiryTimePref(0);
+            notifyBlockSuppressionStateChange();
+        }
+    }
+
+    private SystemContract.BlockSuppressionStatus getBlockSuppressionStatus() {
+        SharedPreferences pref = getContext().getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE);
+        long blockSuppressionExpiryTimeMillis = pref.getLong(BLOCK_SUPPRESSION_EXPIRY_TIME_PREF, 0);
+        return new SystemContract.BlockSuppressionStatus(System.currentTimeMillis() <
+                blockSuppressionExpiryTimeMillis, blockSuppressionExpiryTimeMillis);
+    }
+
+    private boolean shouldSystemBlockNumber(String phoneNumber) {
+        if (getBlockSuppressionStatus().isSuppressed) {
+            return false;
+        }
+        return isBlocked(phoneNumber);
+    }
+
+    private void writeBlockSuppressionExpiryTimePref(long expiryTimeMillis) {
+        SharedPreferences pref = getContext().getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = pref.edit();
+        editor.putLong(BLOCK_SUPPRESSION_EXPIRY_TIME_PREF, expiryTimeMillis);
+        editor.apply();
+    }
+
+    private long getBlockSuppressSecondsFromCarrierConfig() {
+        CarrierConfigManager carrierConfigManager =
+                getContext().getSystemService(CarrierConfigManager.class);
+        int carrierConfigValue = carrierConfigManager.getConfig().getInt
+                (CarrierConfigManager.KEY_DURATION_BLOCKING_DISABLED_AFTER_EMERGENCY_INT);
+        boolean isValidValue = carrierConfigValue >=0 && carrierConfigValue <=
+                MAX_BLOCKING_DISABLED_DURATION_SECONDS;
+        return isValidValue ? carrierConfigValue : CarrierConfigManager.getDefaultConfig().getInt(
+                CarrierConfigManager.KEY_DURATION_BLOCKING_DISABLED_AFTER_EMERGENCY_INT);
+    }
+
     /**
      * Returns {@code false} when the caller is not root, the user selected dialer, the
      * default SMS app or a carrier app.
      */
     private boolean checkForPrivilegedApplications() {
-        if (!canCurrentUserBlockUsers()) {
-            throw new UnsupportedOperationException();
-        }
-
         if (Binder.getCallingUid() == Process.ROOT_UID) {
             return true;
         }
@@ -368,6 +448,11 @@ public class BlockedNumberProvider extends ContentProvider {
         return false;
     }
 
+    private void notifyBlockSuppressionStateChange() {
+        Intent intent = new Intent(SystemContract.ACTION_BLOCK_SUPPRESSION_STATE_CHANGED);
+        getContext().sendBroadcast(intent, Manifest.permission.READ_BLOCKED_NUMBERS);
+    }
+
     private void enforceReadPermission() {
         checkForPermission(android.Manifest.permission.READ_BLOCKED_NUMBERS);
     }
@@ -377,11 +462,41 @@ public class BlockedNumberProvider extends ContentProvider {
     }
 
     private void checkForPermission(String permission) {
-        boolean permitted = getContext().checkCallingPermission(permission)
-                == PackageManager.PERMISSION_GRANTED
+        if (!canCurrentUserBlockUsers()) {
+            throw new UnsupportedOperationException();
+        }
+
+        boolean permitted = passesSystemPermissionCheck(permission)
                 || checkForPrivilegedApplications();
         if (!permitted) {
-            throw new SecurityException("Caller must be system, default dialer or default SMS app");
+            throwSecurityException();
         }
+    }
+
+    private void enforceSystemReadPermission() {
+        enforceSystemPermission(android.Manifest.permission.READ_BLOCKED_NUMBERS);
+    }
+
+    private void enforceSystemWritePermission() {
+        enforceSystemPermission(android.Manifest.permission.WRITE_BLOCKED_NUMBERS);
+    }
+
+    private void enforceSystemPermission(String permission) {
+        if (!canCurrentUserBlockUsers()) {
+            throw new UnsupportedOperationException();
+        }
+
+        if (!passesSystemPermissionCheck(permission)) {
+            throwSecurityException();
+        }
+    }
+
+    private boolean passesSystemPermissionCheck(String permission) {
+        return getContext().checkCallingPermission(permission)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void throwSecurityException() {
+        throw new SecurityException("Caller must be system, default dialer or default SMS app");
     }
 }

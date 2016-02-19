@@ -18,12 +18,15 @@ package com.android.providers.blockednumber;
 import android.app.AppOpsManager;
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.location.CountryDetector;
 import android.os.UserManager;
 import android.provider.BlockedNumberContract;
 import android.telecom.TelecomManager;
+import android.telephony.CarrierConfigManager;
 import android.telephony.TelephonyManager;
 import android.test.mock.MockContentResolver;
 import android.test.mock.MockContext;
@@ -31,7 +34,9 @@ import android.test.mock.MockContext;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 public class MyMockContext extends MockContext {
     @Mock
@@ -44,11 +49,19 @@ public class MyMockContext extends MockContext {
     TelecomManager mTelecomManager;
     @Mock
     TelephonyManager mTelephonyManager;
+    @Mock
+    CarrierConfigManager mCarrierConfigManager;
 
     private final HashMap<Class<?>, String> mSupportedServiceNamesByClass =
             new HashMap<Class<?>, String>();
     private MockContentResolver mResolver;
     private BlockedNumberProviderTestable mProvider;
+    private Context mRealTestContext;
+    final List<String> mIntentsBroadcasted = new ArrayList<>();
+
+    public MyMockContext(Context realTestContext) {
+        this.mRealTestContext = realTestContext;
+    }
 
     @Override
     public String getSystemServiceName(Class<?> serviceClass) {
@@ -71,6 +84,8 @@ public class MyMockContext extends MockContext {
                 return mTelecomManager;
             case Context.TELEPHONY_SERVICE:
                 return mTelephonyManager;
+            case Context.CARRIER_CONFIG_SERVICE:
+                return mCarrierConfigManager;
         }
         throw new UnsupportedOperationException("Service not supported: " + name);
     }
@@ -87,7 +102,17 @@ public class MyMockContext extends MockContext {
                 ? PackageManager.PERMISSION_GRANTED : PackageManager.PERMISSION_DENIED;
     }
 
-    public void init() {
+    @Override
+    public SharedPreferences getSharedPreferences(String name, int mode) {
+        return mRealTestContext.getSharedPreferences(name, mode);
+    }
+
+    @Override
+    public void sendBroadcast(Intent intent, String receiverPermission) {
+        mIntentsBroadcasted.add(intent.getAction());
+    }
+
+    public void initializeContext() {
         registerServices();
         mResolver = new MockContentResolver();
 
@@ -98,6 +123,10 @@ public class MyMockContext extends MockContext {
         mProvider.attachInfoForTesting(this, info);
 
         mResolver.addProvider(BlockedNumberContract.AUTHORITY, mProvider);
+
+        SharedPreferences prefs = mRealTestContext.getSharedPreferences(
+                "block_number_provider_prefs", Context.MODE_PRIVATE);
+        prefs.edit().clear().commit();
     }
 
     private void registerServices() {
@@ -108,6 +137,8 @@ public class MyMockContext extends MockContext {
         mSupportedServiceNamesByClass.put(UserManager.class, Context.USER_SERVICE);
         mSupportedServiceNamesByClass.put(TelecomManager.class, Context.TELECOM_SERVICE);
         mSupportedServiceNamesByClass.put(TelephonyManager.class, Context.TELEPHONY_SERVICE);
+        mSupportedServiceNamesByClass.put(
+                CarrierConfigManager.class, Context.CARRIER_CONFIG_SERVICE);
     }
 
     public void shutdown() {
