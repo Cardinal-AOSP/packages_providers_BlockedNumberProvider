@@ -19,7 +19,4 @@
     <!-- This is the label for the application that stores blocked phone numbers [CHAR LIMIT=NONE] -->
     <string name="app_label">Blocked Numbers Storage</string>
 
-    <!-- This is the label for the provider that stores blocked phone numbers [CHAR LIMIT=NONE] -->
-    <string name="provider_label">Blocked Numbers</string>
-
 </resources>
