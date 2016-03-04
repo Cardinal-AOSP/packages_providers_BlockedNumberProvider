@@ -44,6 +44,8 @@ import android.telephony.CarrierConfigManager;
 import android.telephony.TelephonyManager;
 import android.test.AndroidTestCase;
 import android.test.MoreAsserts;
+import android.test.suitebuilder.annotation.MediumTest;
+import android.test.suitebuilder.annotation.SmallTest;
 
 import junit.framework.Assert;
 
@@ -53,6 +55,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * runtest --path packages/providers/BlockedNumberProvider/tests
  */
+@SmallTest
 public class BlockedNumberProviderTest extends AndroidTestCase {
     private MyMockContext mMockContext;
     private ContentResolver mResolver;
@@ -133,7 +136,7 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
 
         try {
             insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1-408-454-2222"));
-            fail();
+            fail("SQLiteConstraintException expected");
         } catch (SQLiteConstraintException expected) {
         }
 
@@ -142,9 +145,17 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "045-381-1111",
                 BlockedNumbers.COLUMN_E164_NUMBER, "+81453811111"));
 
-        assertRowCount(6, BlockedNumbers.CONTENT_URI);
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "12345"));
 
-        // TODO Check the table content.
+        assertRowCount(7, BlockedNumbers.CONTENT_URI);
+
+        assertContents(1, "123", "");
+        assertContents(2, "+1-2-3", "");
+        assertContents(3, "+1-408-454-1111", "+14084541111");
+        assertContents(4, "1-408-454-2222", "+14084542222");
+        assertContents(5, "1-408-4542222", "+14084542222");
+        assertContents(6, "045-381-1111", "+81453811111");
+        assertContents(7, "12345", "");
     }
 
     public void testChangesNotified() throws Exception {
@@ -245,6 +256,7 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         }
     }
 
+    @MediumTest
     public void testBlockSuppressionAfterEmergencyContact() {
         int blockSuppressionSeconds = 1000;
         when(mMockContext.mCarrierConfigManager.getConfig())
@@ -291,6 +303,7 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
                 mMockContext.mIntentsBroadcasted.get(0));
     }
 
+    @MediumTest
     public void testBlockSuppressionAfterEmergencyContact_invalidCarrierConfigDefaultValueUsed() {
         int invalidBlockSuppressionSeconds = 700000; // > 1 week
         when(mMockContext.mCarrierConfigManager.getConfig())
@@ -497,5 +510,19 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
                 >= timestampMillisBeforeEmergencyContact + blockSuppressionSeconds * 1000);
         assertTrue(actualExpirationMillis < timestampMillisBeforeEmergencyContact +
                 2 * blockSuppressionSeconds * 1000);
+    }
+
+    private void assertContents(int rowId, String originalNumber, String e164Number) {
+        Uri uri = ContentUris.withAppendedId(BlockedNumbers.CONTENT_URI, rowId);
+        try (Cursor c = mResolver.query(uri, null, null, null, null)) {
+            assertEquals(1, c.getCount());
+            c.moveToNext();
+            assertEquals(3, c.getColumnCount());
+            assertEquals(rowId, c.getInt(c.getColumnIndex(BlockedNumbers.COLUMN_ID)));
+            assertEquals(originalNumber,
+                    c.getString(c.getColumnIndex(BlockedNumbers.COLUMN_ORIGINAL_NUMBER)));
+            assertEquals(e164Number,
+                    c.getString(c.getColumnIndex(BlockedNumbers.COLUMN_E164_NUMBER)));
+        }
     }
 }
