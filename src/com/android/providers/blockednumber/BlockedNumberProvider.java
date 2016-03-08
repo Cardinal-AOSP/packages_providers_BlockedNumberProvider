@@ -40,6 +40,7 @@ import android.provider.BlockedNumberContract;
 import android.provider.BlockedNumberContract.SystemContract;
 import android.telecom.TelecomManager;
 import android.telephony.CarrierConfigManager;
+import android.telephony.PhoneNumberUtils;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
@@ -326,6 +327,16 @@ public class BlockedNumberProvider extends ContentProvider {
         return res;
     }
 
+    private boolean isEmergencyNumber(String phoneNumber) {
+        if (TextUtils.isEmpty(phoneNumber)) {
+            return false;
+        }
+
+        final String e164Number = Utils.getE164Number(getContext(), phoneNumber, null);
+        return PhoneNumberUtils.isEmergencyNumber(phoneNumber)
+                || PhoneNumberUtils.isEmergencyNumber(e164Number);
+    }
+
     private boolean isBlocked(String phoneNumber) {
         if (TextUtils.isEmpty(phoneNumber)) {
             return false;
@@ -392,6 +403,9 @@ public class BlockedNumberProvider extends ContentProvider {
 
     private boolean shouldSystemBlockNumber(String phoneNumber) {
         if (getBlockSuppressionStatus().isSuppressed) {
+            return false;
+        }
+        if (isEmergencyNumber(phoneNumber)) {
             return false;
         }
         return isBlocked(phoneNumber);

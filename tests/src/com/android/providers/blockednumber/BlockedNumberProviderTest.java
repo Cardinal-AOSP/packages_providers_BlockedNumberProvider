@@ -37,6 +37,7 @@ import android.database.sqlite.SQLiteException;
 import android.location.Country;
 import android.net.Uri;
 import android.os.PersistableBundle;
+import android.os.SystemProperties;
 import android.provider.BlockedNumberContract;
 import android.provider.BlockedNumberContract.BlockedNumbers;
 import android.provider.BlockedNumberContract.SystemContract;
@@ -45,7 +46,6 @@ import android.telephony.TelephonyManager;
 import android.test.AndroidTestCase;
 import android.test.MoreAsserts;
 import android.test.suitebuilder.annotation.MediumTest;
-import android.test.suitebuilder.annotation.SmallTest;
 
 import junit.framework.Assert;
 
@@ -55,7 +55,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * runtest --path packages/providers/BlockedNumberProvider/tests
  */
-@SmallTest
+@MediumTest
 public class BlockedNumberProviderTest extends AndroidTestCase {
     private MyMockContext mMockContext;
     private ContentResolver mResolver;
@@ -256,7 +256,6 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         }
     }
 
-    @MediumTest
     public void testBlockSuppressionAfterEmergencyContact() {
         int blockSuppressionSeconds = 1000;
         when(mMockContext.mCarrierConfigManager.getConfig())
@@ -303,7 +302,6 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
                 mMockContext.mIntentsBroadcasted.get(0));
     }
 
-    @MediumTest
     public void testBlockSuppressionAfterEmergencyContact_invalidCarrierConfigDefaultValueUsed() {
         int invalidBlockSuppressionSeconds = 700000; // > 1 week
         when(mMockContext.mCarrierConfigManager.getConfig())
@@ -481,6 +479,14 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         assertIsBlocked(false, "abcdef@gmail.com");
     }
 
+    public void testEmergencyNumbersAreNotBlockedBySystem() {
+        String emergencyNumber = getEmergencyNumberFromSystemPropertiesOrDefault();
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, emergencyNumber));
+
+        assertIsBlocked(true, emergencyNumber);
+        assertFalse(SystemContract.shouldSystemBlockNumber(mMockContext, emergencyNumber));
+    }
+
     private void assertIsBlocked(boolean expected, String phoneNumber) {
         assertEquals(expected, BlockedNumberContract.isBlocked(mMockContext, phoneNumber));
     }
@@ -523,6 +529,15 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
                     c.getString(c.getColumnIndex(BlockedNumbers.COLUMN_ORIGINAL_NUMBER)));
             assertEquals(e164Number,
                     c.getString(c.getColumnIndex(BlockedNumbers.COLUMN_E164_NUMBER)));
+        }
+    }
+
+    private String getEmergencyNumberFromSystemPropertiesOrDefault() {
+        String systemEmergencyNumbers = SystemProperties.get("ril.ecclist");
+        if (systemEmergencyNumbers == null) {
+            return "911";
+        } else {
+            return systemEmergencyNumbers.split(",")[0];
         }
     }
 }
