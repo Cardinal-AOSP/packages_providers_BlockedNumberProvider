@@ -447,6 +447,8 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
     }
 
     public void testIsBlocked() {
+        assertTrue(BlockedNumberContract.canCurrentUserBlockNumbers(mMockContext));
+
         // Prepare test data
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "+1.2-3"));
@@ -485,6 +487,73 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
 
         assertIsBlocked(true, emergencyNumber);
         assertFalse(SystemContract.shouldSystemBlockNumber(mMockContext, emergencyNumber));
+    }
+
+    public void testPrivilegedAppAccessingApisAsSecondaryUser() {
+        when(mMockContext.mUserManager.isPrimaryUser()).thenReturn(false);
+
+        assertFalse(BlockedNumberContract.canCurrentUserBlockNumbers(mMockContext));
+
+        try {
+            insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
+            fail("UnsupportedOperationException expected");
+        } catch (UnsupportedOperationException expected) {
+        }
+
+        try {
+            mResolver.query(BlockedNumbers.CONTENT_URI, null, null, null, null);
+            fail("UnsupportedOperationException expected");
+        } catch (UnsupportedOperationException expected) {
+        }
+
+        try {
+            mResolver.delete(BlockedNumbers.CONTENT_URI, null, null);
+            fail("UnsupportedOperationException expected");
+        } catch (UnsupportedOperationException expected) {
+        }
+
+        try {
+            BlockedNumberContract.isBlocked(mMockContext, "123");
+            fail("UnsupportedOperationException expected");
+        } catch (UnsupportedOperationException expected) {
+        }
+    }
+
+    public void testRegularAppAccessingApisAsSecondaryUser() {
+        when(mMockContext.mUserManager.isPrimaryUser()).thenReturn(false);
+        doReturn(PackageManager.PERMISSION_DENIED)
+                .when(mMockContext).checkCallingPermission(anyString());
+
+        try {
+            BlockedNumberContract.canCurrentUserBlockNumbers(mMockContext);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+
+        try {
+            insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            mResolver.query(BlockedNumbers.CONTENT_URI, null, null, null, null);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            mResolver.delete(BlockedNumbers.CONTENT_URI, null, null);
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            BlockedNumberContract.isBlocked(mMockContext, "123");
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
     }
 
     private void assertIsBlocked(boolean expected, String phoneNumber) {

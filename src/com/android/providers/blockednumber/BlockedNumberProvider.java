@@ -109,7 +109,7 @@ public class BlockedNumberProvider extends ContentProvider {
 
     @Override
     public Uri insert(@NonNull Uri uri, @Nullable ContentValues values) {
-        enforceWritePermission();
+        enforceWritePermissionAndPrimaryUser();
 
         final int match = sUriMatcher.match(uri);
         switch (match) {
@@ -161,7 +161,7 @@ public class BlockedNumberProvider extends ContentProvider {
     @Override
     public int update(@NonNull Uri uri, @Nullable ContentValues values, @Nullable String selection,
             @Nullable String[] selectionArgs) {
-        enforceWritePermission();
+        enforceWritePermissionAndPrimaryUser();
 
         throw new UnsupportedOperationException(
                 "Update is not supported.  Use delete + insert instead");
@@ -170,7 +170,7 @@ public class BlockedNumberProvider extends ContentProvider {
     @Override
     public int delete(@NonNull Uri uri, @Nullable String selection,
             @Nullable String[] selectionArgs) {
-        enforceWritePermission();
+        enforceWritePermissionAndPrimaryUser();
 
         final int match = sUriMatcher.match(uri);
         int numRows;
@@ -218,7 +218,7 @@ public class BlockedNumberProvider extends ContentProvider {
     @Override
     public Cursor query(@NonNull Uri uri, @Nullable String[] projection, @Nullable String selection,
             @Nullable String[] selectionArgs, @Nullable String sortOrder) {
-        enforceReadPermission();
+        enforceReadPermissionAndPrimaryUser();
 
         return query(uri, projection, selection, selectionArgs, sortOrder, null);
     }
@@ -227,7 +227,7 @@ public class BlockedNumberProvider extends ContentProvider {
     public Cursor query(@NonNull Uri uri, @Nullable String[] projection, @Nullable String selection,
             @Nullable String[] selectionArgs, @Nullable String sortOrder,
             @Nullable CancellationSignal cancellationSignal) {
-        enforceReadPermission();
+        enforceReadPermissionAndPrimaryUser();
 
         final int match = sUriMatcher.match(uri);
         Cursor cursor;
@@ -286,7 +286,7 @@ public class BlockedNumberProvider extends ContentProvider {
         final Bundle res = new Bundle();
         switch (method) {
             case BlockedNumberContract.METHOD_IS_BLOCKED:
-                enforceReadPermission();
+                enforceReadPermissionAndPrimaryUser();
 
                 res.putBoolean(BlockedNumberContract.RES_NUMBER_IS_BLOCKED, isBlocked(arg));
                 break;
@@ -297,17 +297,17 @@ public class BlockedNumberProvider extends ContentProvider {
                         BlockedNumberContract.RES_CAN_BLOCK_NUMBERS, canCurrentUserBlockUsers());
                 break;
             case SystemContract.METHOD_NOTIFY_EMERGENCY_CONTACT:
-                enforceSystemWritePermission();
+                enforceSystemWritePermissionAndPrimaryUser();
 
                 notifyEmergencyContact();
                 break;
             case SystemContract.METHOD_END_BLOCK_SUPPRESSION:
-                enforceSystemWritePermission();
+                enforceSystemWritePermissionAndPrimaryUser();
 
                 endBlockSuppression();
                 break;
             case SystemContract.METHOD_GET_BLOCK_SUPPRESSION_STATUS:
-                enforceSystemReadPermission();
+                enforceSystemReadPermissionAndPrimaryUser();
 
                 SystemContract.BlockSuppressionStatus status = getBlockSuppressionStatus();
                 res.putBoolean(SystemContract.RES_IS_BLOCKING_SUPPRESSED, status.isSuppressed);
@@ -315,12 +315,12 @@ public class BlockedNumberProvider extends ContentProvider {
                         status.untilTimestampMillis);
                 break;
             case SystemContract.METHOD_SHOULD_SYSTEM_BLOCK_NUMBER:
-                enforceSystemReadPermission();
+                enforceSystemReadPermissionAndPrimaryUser();
                 res.putBoolean(
                         BlockedNumberContract.RES_NUMBER_IS_BLOCKED, shouldSystemBlockNumber(arg));
                 break;
             default:
-                enforceReadPermission();
+                enforceReadPermissionAndPrimaryUser();
 
                 throw new IllegalArgumentException("Unsupported method " + method);
         }
@@ -471,15 +471,22 @@ public class BlockedNumberProvider extends ContentProvider {
         checkForPermission(android.Manifest.permission.READ_BLOCKED_NUMBERS);
     }
 
-    private void enforceWritePermission() {
-        checkForPermission(android.Manifest.permission.WRITE_BLOCKED_NUMBERS);
+    private void enforceReadPermissionAndPrimaryUser() {
+        checkForPermissionAndPrimaryUser(android.Manifest.permission.READ_BLOCKED_NUMBERS);
     }
 
-    private void checkForPermission(String permission) {
+    private void enforceWritePermissionAndPrimaryUser() {
+        checkForPermissionAndPrimaryUser(android.Manifest.permission.WRITE_BLOCKED_NUMBERS);
+    }
+
+    private void checkForPermissionAndPrimaryUser(String permission) {
+        checkForPermission(permission);
         if (!canCurrentUserBlockUsers()) {
             throw new UnsupportedOperationException();
         }
+    }
 
+    private void checkForPermission(String permission) {
         boolean permitted = passesSystemPermissionCheck(permission)
                 || checkForPrivilegedApplications();
         if (!permitted) {
@@ -487,15 +494,15 @@ public class BlockedNumberProvider extends ContentProvider {
         }
     }
 
-    private void enforceSystemReadPermission() {
-        enforceSystemPermission(android.Manifest.permission.READ_BLOCKED_NUMBERS);
+    private void enforceSystemReadPermissionAndPrimaryUser() {
+        enforceSystemPermissionAndUser(android.Manifest.permission.READ_BLOCKED_NUMBERS);
     }
 
-    private void enforceSystemWritePermission() {
-        enforceSystemPermission(android.Manifest.permission.WRITE_BLOCKED_NUMBERS);
+    private void enforceSystemWritePermissionAndPrimaryUser() {
+        enforceSystemPermissionAndUser(android.Manifest.permission.WRITE_BLOCKED_NUMBERS);
     }
 
-    private void enforceSystemPermission(String permission) {
+    private void enforceSystemPermissionAndUser(String permission) {
         if (!canCurrentUserBlockUsers()) {
             throw new UnsupportedOperationException();
         }
