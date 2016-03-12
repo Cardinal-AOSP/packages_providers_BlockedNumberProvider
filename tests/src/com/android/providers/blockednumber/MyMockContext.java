@@ -16,6 +16,7 @@
 package com.android.providers.blockednumber;
 
 import android.app.AppOpsManager;
+import android.app.backup.BackupManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -51,6 +52,8 @@ public class MyMockContext extends MockContext {
     TelephonyManager mTelephonyManager;
     @Mock
     CarrierConfigManager mCarrierConfigManager;
+    @Mock
+    BackupManager mBackupManager;
 
     private final HashMap<Class<?>, String> mSupportedServiceNamesByClass =
             new HashMap<Class<?>, String>();
@@ -116,7 +119,7 @@ public class MyMockContext extends MockContext {
         registerServices();
         mResolver = new MockContentResolver();
 
-        mProvider = new BlockedNumberProviderTestable();
+        mProvider = new BlockedNumberProviderTestable(mBackupManager);
 
         final ProviderInfo info = new ProviderInfo();
         info.authority = BlockedNumberContract.AUTHORITY;
