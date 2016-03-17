@@ -22,8 +22,8 @@
         android:process="android.process.acore"
         android:label="@string/app_label"
         android:usesCleartextTraffic="false"
-        android:encryptionAware="true"
-        android:forceDeviceEncrypted="true">
+        android:defaultToDeviceProtectedStorage="true"
+        android:directBootAware="true">
 
         <provider android:name="BlockedNumberProvider"
             android:authorities="com.android.blockednumber"
