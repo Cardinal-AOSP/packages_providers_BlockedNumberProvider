@@ -19,6 +19,7 @@ import android.Manifest;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.app.AppOpsManager;
+import android.app.backup.BackupManager;
 import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
@@ -69,6 +70,10 @@ public class BlockedNumberProvider extends ContentProvider {
     private static final String BLOCK_SUPPRESSION_EXPIRY_TIME_PREF =
             "block_suppression_expiry_time_pref";
     private static final int MAX_BLOCKING_DISABLED_DURATION_SECONDS = 7 * 24 * 3600; // 1 week
+    // Normally, we allow calls from self, *except* in unit tests, where we clear this flag
+    // to emulate calls from other apps.
+    @VisibleForTesting
+    static boolean ALLOW_SELF_CALL = true;
 
     static {
         sUriMatcher = new UriMatcher(0);
@@ -87,10 +92,13 @@ public class BlockedNumberProvider extends ContentProvider {
 
     @VisibleForTesting
     protected BlockedNumberDatabaseHelper mDbHelper;
+    @VisibleForTesting
+    protected BackupManager mBackupManager;
 
     @Override
     public boolean onCreate() {
         mDbHelper = BlockedNumberDatabaseHelper.getInstance(getContext());
+        mBackupManager = new BackupManager(getContext());
         return true;
     }
 
@@ -116,6 +124,7 @@ public class BlockedNumberProvider extends ContentProvider {
             case BLOCKED_LIST:
                 Uri blockedUri = insertBlockedNumber(values);
                 getContext().getContentResolver().notifyChange(blockedUri, null);
+                mBackupManager.dataChanged();
                 return blockedUri;
             default:
                 throw new IllegalArgumentException("Unsupported URI: " + uri);
@@ -185,6 +194,7 @@ public class BlockedNumberProvider extends ContentProvider {
                 throw new IllegalArgumentException("Unsupported URI: " + uri);
         }
         getContext().getContentResolver().notifyChange(uri, null);
+        mBackupManager.dataChanged();
         return numRows;
     }
 
@@ -487,7 +497,7 @@ public class BlockedNumberProvider extends ContentProvider {
 
     private void checkForPermission(String permission) {
         boolean permitted = passesSystemPermissionCheck(permission)
-                || checkForPrivilegedApplications();
+                || checkForPrivilegedApplications() || isSelf();
         if (!permitted) {
             throwSecurityException();
         }
@@ -514,6 +524,10 @@ public class BlockedNumberProvider extends ContentProvider {
     private boolean passesSystemPermissionCheck(String permission) {
         return getContext().checkCallingPermission(permission)
                 == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean isSelf() {
+        return ALLOW_SELF_CALL && Binder.getCallingPid() == Process.myPid();
     }
 
     private void throwSecurityException() {
