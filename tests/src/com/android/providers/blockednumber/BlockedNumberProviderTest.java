@@ -63,6 +63,7 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
     @Override
     protected void setUp() throws Exception {
         super.setUp();
+        BlockedNumberProvider.ALLOW_SELF_CALL = false;
 
         mMockContext = spy(new MyMockContext(getContext()));
         mMockContext.initializeContext();
@@ -175,6 +176,7 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
             Uri uri = insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "14506507000"));
             mResolver.delete(uri, null, null);
             latch.await(10, TimeUnit.SECONDS);
+            verify(mMockContext.mBackupManager, times(2)).dataChanged();
         } catch (Exception e) {
             fail(e.toString());
         } finally {
@@ -391,6 +393,16 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         // Dialer check is executed twice: once for insert, and once for isBlocked.
         verify(mMockContext.mTelephonyManager, times(2))
                 .checkCarrierPrivilegesForPackage(anyString());
+    }
+
+    public void testSelfCanAccessApis() {
+        BlockedNumberProvider.ALLOW_SELF_CALL = true;
+        doReturn(PackageManager.PERMISSION_DENIED)
+                .when(mMockContext).checkCallingPermission(anyString());
+
+        mResolver.insert(
+                BlockedNumbers.CONTENT_URI, cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
+        assertIsBlocked(true, "123");
     }
 
     public void testDefaultDialerCanAccessApis() {

@@ -15,7 +15,13 @@
  */
 package com.android.providers.blockednumber;
 
+import android.app.backup.BackupManager;
+
 public class BlockedNumberProviderTestable extends BlockedNumberProvider {
+    BlockedNumberProviderTestable(BackupManager backupManager) {
+        mBackupManager = backupManager;
+    }
+
     @Override
     public boolean onCreate() {
         mDbHelper = BlockedNumberDatabaseHelper.newInstanceForTest(getContext());
