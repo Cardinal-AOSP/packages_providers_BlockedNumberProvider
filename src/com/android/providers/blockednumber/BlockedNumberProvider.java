@@ -291,8 +291,7 @@ public class BlockedNumberProvider extends ContentProvider {
                 res.putBoolean(BlockedNumberContract.RES_NUMBER_IS_BLOCKED, isBlocked(arg));
                 break;
             case BlockedNumberContract.METHOD_CAN_CURRENT_USER_BLOCK_NUMBERS:
-                enforceReadPermission();
-
+                // No permission checks: any app should be able to access this API.
                 res.putBoolean(
                         BlockedNumberContract.RES_CAN_BLOCK_NUMBERS, canCurrentUserBlockUsers());
                 break;

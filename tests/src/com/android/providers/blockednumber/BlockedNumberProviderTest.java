@@ -524,12 +524,7 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         doReturn(PackageManager.PERMISSION_DENIED)
                 .when(mMockContext).checkCallingPermission(anyString());
 
-        try {
-            BlockedNumberContract.canCurrentUserBlockNumbers(mMockContext);
-            fail("SecurityException expected");
-        } catch (SecurityException expected) {
-        }
-
+        assertFalse(BlockedNumberContract.canCurrentUserBlockNumbers(mMockContext));
 
         try {
             insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
