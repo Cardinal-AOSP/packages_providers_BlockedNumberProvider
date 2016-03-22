@@ -25,7 +25,8 @@
         android:defaultToDeviceProtectedStorage="true"
         android:directBootAware="true"
         android:allowBackup="true"
-        android:backupAgent=".BlockedNumberBackupAgent">
+        android:backupAgent=".BlockedNumberBackupAgent"
+        android:killAfterRestore="false">
 
         <meta-data android:name="com.google.android.backup.api_key"
             android:value="AEdPqrEAAAAIRdCykcev-SjrWshQG1Fq5-ZbktewFXgOnb3U5g" />
