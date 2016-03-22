@@ -27,6 +27,9 @@
         android:allowBackup="true"
         android:backupAgent=".BlockedNumberBackupAgent">
 
+        <meta-data android:name="com.google.android.backup.api_key"
+            android:value="AEdPqrEAAAAIRdCykcev-SjrWshQG1Fq5-ZbktewFXgOnb3U5g" />
+
         <provider android:name="BlockedNumberProvider"
             android:authorities="com.android.blockednumber"
             android:multiprocess="false"
