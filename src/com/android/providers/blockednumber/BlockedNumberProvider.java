@@ -155,8 +155,9 @@ public class BlockedNumberProvider extends ContentProvider {
         }
 
         // Then insert.
-        final long id = mDbHelper.getWritableDatabase().insertOrThrow(
-                BlockedNumberDatabaseHelper.Tables.BLOCKED_NUMBERS, null, cv);
+        final long id = mDbHelper.getWritableDatabase().insertWithOnConflict(
+                BlockedNumberDatabaseHelper.Tables.BLOCKED_NUMBERS, null, cv,
+                SQLiteDatabase.CONFLICT_REPLACE);
 
         return ContentUris.withAppendedId(BlockedNumberContract.BlockedNumbers.CONTENT_URI, id);
     }
