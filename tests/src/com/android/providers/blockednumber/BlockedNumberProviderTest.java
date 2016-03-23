@@ -134,12 +134,9 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "+1-2-3"));
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "+1-408-454-1111"));
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1-408-454-2222"));
-
-        try {
-            insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1-408-454-2222"));
-            fail("SQLiteConstraintException expected");
-        } catch (SQLiteConstraintException expected) {
-        }
+        // Re-inserting the same number should be ok, but the E164 number is replaced.
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1-408-454-2222",
+                BlockedNumbers.COLUMN_E164_NUMBER, "+814084542222"));
 
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1-408-4542222"));
 
@@ -148,15 +145,18 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
 
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "12345"));
 
+
+
         assertRowCount(7, BlockedNumbers.CONTENT_URI);
 
         assertContents(1, "123", "");
         assertContents(2, "+1-2-3", "");
         assertContents(3, "+1-408-454-1111", "+14084541111");
-        assertContents(4, "1-408-454-2222", "+14084542222");
-        assertContents(5, "1-408-4542222", "+14084542222");
-        assertContents(6, "045-381-1111", "+81453811111");
-        assertContents(7, "12345", "");
+        // Missing 4 due to re-insertion of the same number.
+        assertContents(5, "1-408-454-2222", "+814084542222");
+        assertContents(6, "1-408-4542222", "+14084542222");
+        assertContents(7, "045-381-1111", "+81453811111");
+        assertContents(8, "12345", "");
     }
 
     public void testChangesNotified() throws Exception {
