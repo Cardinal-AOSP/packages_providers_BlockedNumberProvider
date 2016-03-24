@@ -50,6 +50,8 @@ import com.android.common.content.ProjectionMap;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.providers.blockednumber.BlockedNumberDatabaseHelper.Tables;
 
+import java.util.Arrays;
+
 /**
  * Blocked phone number provider.
  *
@@ -89,6 +91,12 @@ public class BlockedNumberProvider extends ContentProvider {
 
     private static final String ID_SELECTION =
             BlockedNumberContract.BlockedNumbers.COLUMN_ID + "=?";
+
+    private static final String ORIGINAL_NUMBER_SELECTION =
+            BlockedNumberContract.BlockedNumbers.COLUMN_ORIGINAL_NUMBER + "=?";
+
+    private static final String E164_NUMBER_SELECTION =
+            BlockedNumberContract.BlockedNumbers.COLUMN_E164_NUMBER + "=?";
 
     @VisibleForTesting
     protected BlockedNumberDatabaseHelper mDbHelper;
@@ -306,6 +314,11 @@ public class BlockedNumberProvider extends ContentProvider {
                 res.putBoolean(
                         BlockedNumberContract.RES_CAN_BLOCK_NUMBERS, canCurrentUserBlockUsers());
                 break;
+            case BlockedNumberContract.METHOD_UNBLOCK:
+                enforceWritePermissionAndPrimaryUser();
+
+                res.putInt(BlockedNumberContract.RES_NUM_ROWS_DELETED, unblock(arg));
+                break;
             case SystemContract.METHOD_NOTIFY_EMERGENCY_CONTACT:
                 enforceSystemWritePermissionAndPrimaryUser();
 
@@ -335,6 +348,26 @@ public class BlockedNumberProvider extends ContentProvider {
                 throw new IllegalArgumentException("Unsupported method " + method);
         }
         return res;
+    }
+
+    private int unblock(String phoneNumber) {
+        if (TextUtils.isEmpty(phoneNumber)) {
+            return 0;
+        }
+
+        StringBuilder selectionBuilder = new StringBuilder(ORIGINAL_NUMBER_SELECTION);
+        String[] selectionArgs = new String[]{phoneNumber};
+        final String e164Number = Utils.getE164Number(getContext(), phoneNumber, null);
+        if (!TextUtils.isEmpty(e164Number)) {
+            selectionBuilder.append(" or " + E164_NUMBER_SELECTION);
+            selectionArgs = new String[]{phoneNumber, e164Number};
+        }
+        String selection = selectionBuilder.toString();
+        if (DEBUG) {
+            Log.d(TAG, String.format("Unblocking numbers using selection: %s, args: %s",
+                    selection, Arrays.toString(selectionArgs)));
+        }
+        return deleteBlockedNumber(selection, selectionArgs);
     }
 
     private boolean isEmergencyNumber(String phoneNumber) {
