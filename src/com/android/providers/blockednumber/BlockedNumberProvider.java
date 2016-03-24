@@ -61,7 +61,7 @@ import java.util.Arrays;
 public class BlockedNumberProvider extends ContentProvider {
     static final String TAG = "BlockedNumbers";
 
-    private static final boolean DEBUG = true; // DO NOT SUBMIT WITH TRUE.
+    private static final boolean DEBUG = false; // DO NOT SUBMIT WITH TRUE.
 
     private static final int BLOCKED_LIST = 1000;
     private static final int BLOCKED_ID = 1001;
