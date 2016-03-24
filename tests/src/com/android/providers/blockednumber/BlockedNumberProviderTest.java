@@ -21,8 +21,8 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.app.AppOpsManager;
@@ -32,7 +32,6 @@ import android.content.ContentValues;
 import android.content.pm.PackageManager;
 import android.database.ContentObserver;
 import android.database.Cursor;
-import android.database.sqlite.SQLiteConstraintException;
 import android.database.sqlite.SQLiteException;
 import android.location.Country;
 import android.net.Uri;
@@ -355,6 +354,12 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         }
 
         try {
+            BlockedNumberContract.unblock(mMockContext, "123");
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
             SystemContract.notifyEmergencyContact(mMockContext);
             fail("SecurityException expected");
         } catch (SecurityException expected) {
@@ -493,6 +498,22 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
         assertIsBlocked(false, "abcdef@gmail.com");
     }
 
+    public void testUnblock() {
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "+1-500-454-1111"));
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "1500-454-1111"));
+        insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "abc.def@gmail.com"));
+
+        // Unblocking non-existent number is a no-op.
+        assertEquals(0, BlockedNumberContract.unblock(mMockContext, "12345"));
+
+        // Both rows which map to the same E164 number are deleted.
+        assertEquals(2, BlockedNumberContract.unblock(mMockContext, "5004541111"));
+        assertIsBlocked(false, "1-500-454-1111");
+
+        assertEquals(1, BlockedNumberContract.unblock(mMockContext, "abc.def@gmail.com"));
+        assertIsBlocked(false, "abc.def@gmail.com");
+    }
+
     public void testEmergencyNumbersAreNotBlockedBySystem() {
         String emergencyNumber = getEmergencyNumberFromSystemPropertiesOrDefault();
         insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, emergencyNumber));
@@ -529,6 +550,12 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
             fail("UnsupportedOperationException expected");
         } catch (UnsupportedOperationException expected) {
         }
+
+        try {
+            BlockedNumberContract.unblock(mMockContext, "123");
+            fail("UnsupportedOperationException expected");
+        } catch (UnsupportedOperationException expected) {
+        }
     }
 
     public void testRegularAppAccessingApisAsSecondaryUser() {
@@ -558,6 +585,12 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
 
         try {
             BlockedNumberContract.isBlocked(mMockContext, "123");
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+        }
+
+        try {
+            BlockedNumberContract.unblock(mMockContext, "123");
             fail("SecurityException expected");
         } catch (SecurityException expected) {
         }
