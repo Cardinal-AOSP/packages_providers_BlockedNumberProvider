@@ -8,7 +8,7 @@ LOCAL_SRC_FILES := $(call all-java-files-under, src)
 
 LOCAL_STATIC_JAVA_LIBRARIES += android-common guava
 
-LOCAL_EMMA_COVERAGE_FILTER := +com.android.providers.blockednumber.*
+LOCAL_JACK_COVERAGE_INCLUDE_FILTER := com.android.providers.blockednumber.*
 
 LOCAL_PACKAGE_NAME := BlockedNumberProvider
 LOCAL_CERTIFICATE := shared
