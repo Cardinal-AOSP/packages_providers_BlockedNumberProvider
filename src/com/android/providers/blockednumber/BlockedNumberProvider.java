@@ -525,7 +525,7 @@ public class BlockedNumberProvider extends ContentProvider {
     private void checkForPermissionAndPrimaryUser(String permission) {
         checkForPermission(permission);
         if (!canCurrentUserBlockUsers()) {
-            throw new UnsupportedOperationException();
+            throwCurrentUserNotPermittedSecurityException();
         }
     }
 
@@ -547,7 +547,7 @@ public class BlockedNumberProvider extends ContentProvider {
 
     private void enforceSystemPermissionAndUser(String permission) {
         if (!canCurrentUserBlockUsers()) {
-            throw new UnsupportedOperationException();
+            throwCurrentUserNotPermittedSecurityException();
         }
 
         if (!passesSystemPermissionCheck(permission)) {
@@ -566,5 +566,9 @@ public class BlockedNumberProvider extends ContentProvider {
 
     private void throwSecurityException() {
         throw new SecurityException("Caller must be system, default dialer or default SMS app");
+    }
+
+    private void throwCurrentUserNotPermittedSecurityException() {
+        throw new SecurityException("The current user cannot perform this operation");
     }
 }
