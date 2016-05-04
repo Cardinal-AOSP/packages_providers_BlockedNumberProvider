@@ -529,32 +529,33 @@ public class BlockedNumberProviderTest extends AndroidTestCase {
 
         try {
             insert(cv(BlockedNumbers.COLUMN_ORIGINAL_NUMBER, "123"));
-            fail("UnsupportedOperationException expected");
-        } catch (UnsupportedOperationException expected) {
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
+            assertTrue(expected.getMessage().contains("current user"));
         }
 
         try {
             mResolver.query(BlockedNumbers.CONTENT_URI, null, null, null, null);
-            fail("UnsupportedOperationException expected");
-        } catch (UnsupportedOperationException expected) {
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
         }
 
         try {
             mResolver.delete(BlockedNumbers.CONTENT_URI, null, null);
-            fail("UnsupportedOperationException expected");
-        } catch (UnsupportedOperationException expected) {
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
         }
 
         try {
             BlockedNumberContract.isBlocked(mMockContext, "123");
-            fail("UnsupportedOperationException expected");
-        } catch (UnsupportedOperationException expected) {
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
         }
 
         try {
             BlockedNumberContract.unblock(mMockContext, "123");
-            fail("UnsupportedOperationException expected");
-        } catch (UnsupportedOperationException expected) {
+            fail("SecurityException expected");
+        } catch (SecurityException expected) {
         }
     }
 
